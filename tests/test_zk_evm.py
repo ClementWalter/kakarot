@@ -1207,19 +1207,46 @@ class TestZkEVM:
                 for event in sorted(res.call_info.events, key=lambda x: x.order)
             ] == events
 
-    # async def test_deploy(
-    #     self,
-    #     starknet: Starknet,
-    #     zk_evm: StarknetContract,
-    #     contract_account_class: DeclaredClass,
-    # ):
-    #     code = [1, 12312]
-    #     tx = await zk_evm.deploy(bytes=code).execute(caller_address=1)
-    #     starknet_contract_address = tx.result.starknet_contract_address
-    #     account_contract = StarknetContract(
-    #         starknet.state,
-    #         contract_account_class.abi,
-    #         starknet_contract_address,
-    #         tx,
-    #     )
-    #     assert (await account_contract.code().call()).result.code == code
+    async def test_deploy(
+        self,
+        starknet: Starknet,
+        zk_evm: StarknetContract,
+        contract_account_class: DeclaredClass,
+    ):
+        code = [1, 12312]
+        tx = await zk_evm.deploy(bytes=code).execute(caller_address=1)
+        starknet_contract_address = tx.result.starknet_contract_address
+        account_contract = StarknetContract(
+            starknet.state,
+            contract_account_class.abi,
+            starknet_contract_address,
+            tx,
+        )
+        assert (await account_contract.code().call()).result.code == code
+
+    # TODO: not sure how many of those tests we want to run because it can be quite slow.
+    @pytest.mark.parametrize(
+        "params",
+        params[:2],
+    )
+    async def test_execute_at_address(
+        self,
+        zk_evm,
+        params,
+    ):
+        Uint256 = zk_evm.struct_manager.get_contract_struct("Uint256")
+        tx = await zk_evm.deploy(
+            bytes=[int(b, 16) for b in wrap(params["code"], 2)],
+        ).execute(caller_address=1)
+        evm_contract_address = tx.result.evm_contract_address
+
+        res = await zk_evm.execute_at_address(
+            address=evm_contract_address,
+            calldata=[int(m, 16) for m in wrap(params["calldata"], 2)],
+        ).call(caller_address=1)
+
+        assert res.result.stack == [
+            Uint256(*self.int_to_uint256(int(s)))
+            for s in (params["stack"].split(",") if params["stack"] else [])
+        ]
+        assert res.result.memory == [int(m, 16) for m in wrap(params["memory"], 2)]
